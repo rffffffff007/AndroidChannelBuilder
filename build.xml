@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project default="help">
+	<property file="build.properties" />
+	<!-- get the library project path -->
+	<property file="${src.dir}/project.properties" />
+	
+	<taskdef resource="net/sf/antcontrib/antlib.xml"/>
+  
+	<propertyregex property="out.build.path.project.name" input="${src.dir}" override="true"
+							regexp=".*[\\/](.*)" 
+							replace="\1" />
+	<property name="out.build.path.project" value="${out.build.path}\${out.build.path.project.name}" />
+	
+	<target name="help">
+		<echo>sample: ant -f build.xml -propertyfile build.properties -Dchannel build</echo>
+	</target>
+	
+	<target name="clean">
+		<echo>Clean output folders..</echo>
+		<delete dir="${out.build.path}"/>
+	</target>
+	
+	<target name="init">
+        <echo>Creating output directories if needed...</echo>
+        <mkdir dir="${out.build.path}" />
+        <mkdir dir="${out.apk.path}" />
+		<mkdir dir="${out.build.path.project}" />
+    </target>
+	
+	<target name="copy" depends="init">
+		<echo>Copy from ${src.dir} to ${out.build.path.project} ...</echo>
+		<copy todir="${out.build.path.project}" overwrite="true">
+           <fileset dir="${src.dir}">
+				<exclude name="bin/" />
+				<exclude name="build/" />
+				<exclude name="gen/" />
+           </fileset>
+        </copy>
+	    <echo>Copy from ${channel.specified.path}/${channel} to ${out.build.path}/res ...</echo>
+	    <copy todir="${out.build.path.project}" overwrite="true" failonerror="false">
+			<fileset dir="${channel.specified.path}/${channel}">
+			</fileset>
+	    </copy>
+		
+		<antcall target="android-update" >
+			<param name="project.path" value="${out.build.path.project}" />
+		</antcall>
+		
+		<for list="1,2,3,4,5" param="num">
+			<sequential>
+				<if>
+					<isset property="android.library.reference.@{num}" />
+					<then>
+						<echo>Copy ${android.library.reference.@{num}}</echo>
+						<propertyregex property="lib.path" input="${android.library.reference.@{num}}" override="true"
+							regexp=".*[\\/](.*)" 
+							replace="\1" />
+						<mkdir dir="${out.build.path}/${lib.path}" />
+						<copy todir="${out.build.path}/${lib.path}" overwrite="true">
+							<fileset dir="${src.dir}/${android.library.reference.@{num}}">
+								<exclude name="bin/" />
+								<exclude name="build/" />
+								<exclude name="gen/" />
+							</fileset>
+						</copy>
+						<antcall target="android-update" >
+							<param name="project.path" value="${out.build.path}/${lib.path}" />
+						</antcall>
+					</then>
+				</if>
+			</sequential>
+		</for>
+	</target>
+	
+	<target name="android-update">
+		<echo>Android updating...</echo>
+		<if>
+			<os family="windows" />  
+			<then>
+				<exec executable="cmd">
+					<arg value="/c"/>
+					<arg value="android update project -p ${project.path}"/>
+				</exec>
+			</then>
+			<else>
+				<exec executable="android">
+					<arg value="update project -p ${project.path}"/>
+				</exec>
+			</else>
+		</if>
+	</target>
+	
+	<target name="build" >
+		<antcall target="copy" />
+		
+		<antcall target="modify-manifest" />
+		<echo>Build project, ${version.name}, ${version.code}, ${channel}</echo>
+		<exec executable="cmd">
+			<arg value="/c"/>
+			<arg value="cd ${out.build.path.project} &amp; ant release"/>
+		</exec>
+		<!--<ant antfile="${out.build.path.project}/build.xml" inheritAll="false" target="release" /> -->
+		<copy file="${out.build.path.project}/build/${src.project.name}-release.apk" tofile="${out.apk.path}/${out.apk.name}.apk" />
+		<antcall target="clean" />
+	</target>
+	
+	<target name="modify-manifest" >
+		<echo>Modify AndroidManifest.xml</echo>
+		<replaceregexp file="${out.build.path.project}\AndroidManifest.xml"
+               match="android:versionName=&quot;[\w\d\._]*&quot;"
+               replace="android:versionName=&quot;${version.name}&quot;"
+		/>
+		<replaceregexp file="${out.build.path.project}\AndroidManifest.xml"
+               match="android:versionCode=&quot;[\d\.]*&quot;"
+               replace="android:versionCode=&quot;${version.code}&quot;"
+		/>
+		<replaceregexp file="${out.build.path.project}\AndroidManifest.xml" flags="s"
+               match="android:name=&quot;UMENG_CHANNEL&quot;[^&quot;]*?android:value=&quot;[\w\d_]*?&quot;"
+               replace="android:name=&quot;UMENG_CHANNEL&quot; android:value=&quot;${channel}&quot;"
+		/>
+	</target>
+</project>
